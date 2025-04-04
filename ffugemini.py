@@ -56,12 +56,12 @@ def get_ai_extensions(url, headers, api_key, tech_detected, max_extensions=5):
         print(f"[-] Exception while calling Gemini API: {e}")
         return []
 
-# Function to run httpx and detect technologies
-def detect_technologies(url):
-    print(f"[*] Detecting technologies for {url} using httpx...")
+# Function to run httpx and detect technologies (without FUZZ in the URL)
+def detect_technologies(base_url):
+    print(f"[*] Detecting technologies for {base_url} using httpx...")
     
     # Debug: Print the command being run
-    command = ['httpx', '-u', url, '-tech-detect']
+    command = ['httpx', '-u', base_url, '-tech-detect']
     print(f"Running command: {' '.join(command)}")
     
     result = subprocess.run(command, capture_output=True, text=True)
@@ -77,13 +77,13 @@ def detect_technologies(url):
     tech_detected = []
     # Now we'll parse the output properly by looking for the URL and the technologies in brackets
     for line in result.stdout.splitlines():
-        if line.startswith(url):
-            # Extract technologies from the line
+        if line.startswith(base_url):
+            # Extract technologies from the line and remove any ANSI color codes
             tech_detected = re.findall(r"\[([^\]]+)\]", line)
             if tech_detected:
-                # Remove whitespace and split by commas
+                # Clean the technologies and split by commas, then strip any unwanted characters
                 tech_detected = tech_detected[0].split(',')
-                tech_detected = [tech.strip() for tech in tech_detected]
+                tech_detected = [tech.strip().replace("\x1b[35m", "").replace("\x1b[0m", "") for tech in tech_detected]
                 break
 
     return tech_detected
@@ -109,41 +109,37 @@ def main():
 
     headers = {"Content-Type": "application/json"}
 
-    try:
-        # Step 1: Detect technologies using httpx
-        tech_detected = detect_technologies(url)
-        
-        if not tech_detected:
-            print("[-] No technologies detected by httpx.")
-            tech_detected = "None"
-        else:
-            print(f"[+] Detected technologies: {tech_detected}")
+    # Step 1: Detect technologies using httpx (on the base URL, not with FUZZ)
+    base_url = url.replace("/FUZZ", "")  # Remove FUZZ part for technology detection
+    tech_detected = detect_technologies(base_url)
+    
+    if not tech_detected:
+        print("[-] No technologies detected by httpx.")
+        tech_detected = "None"
+    else:
+        print(f"[+] Detected technologies: {tech_detected}")
 
-        # Step 2: Ask Gemini for suggested extensions
-        print("[*] Asking Gemini for suggested extensions...")
-        extensions = get_ai_extensions(url, headers, api_key, ", ".join(tech_detected), args.max_extensions)
+    # Step 2: Ask Gemini for suggested extensions
+    print("[*] Asking Gemini for suggested extensions...")
+    extensions = get_ai_extensions(url, headers, api_key, ", ".join(tech_detected), args.max_extensions)
 
-        if not extensions:
-            print("[-] No extensions suggested. Proceeding without -e flag.")
-            extensions_flag = ""
-        else:
-            print(f"[+] Gemini Suggested Extensions: {extensions}")
-            # Ensure that the extensions have a dot at the beginning
-            extensions_with_dot = [f".{ext}" for ext in extensions]
-            extensions_flag = ",".join(extensions_with_dot)
+    if not extensions:
+        print("[-] No extensions suggested. Proceeding without -e flag.")
+        extensions_flag = ""
+    else:
+        print(f"[+] Gemini Suggested Extensions: {extensions}")
+        # Ensure that the extensions have a dot at the beginning
+        extensions_with_dot = [f".{ext}" for ext in extensions]
+        extensions_flag = ",".join(extensions_with_dot)
 
-        # Step 3: Run ffuf with the extensions if available
-        ffuf_cmd = ["ffuf", "-u", url, "-w", wordlist, "-c"]
+    # Step 3: Run ffuf with the extensions if available
+    ffuf_cmd = ["ffuf", "-u", url, "-w", wordlist, "-c"]
 
-        if extensions_flag:
-            ffuf_cmd += ["-e", extensions_flag]
+    if extensions_flag:
+        ffuf_cmd += ["-e", extensions_flag]
 
-        print("[+] Running ffuf with command:", " ".join(ffuf_cmd))
-        subprocess.run(ffuf_cmd)
-
-    except KeyboardInterrupt:
-        print("\n[!] Scan interrupted by user. Exiting...")
-        sys.exit(0)
+    print("[+] Running ffuf with command:", " ".join(ffuf_cmd))
+    subprocess.run(ffuf_cmd)
 
 if __name__ == "__main__":
     main()
