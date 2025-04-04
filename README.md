@@ -25,7 +25,6 @@ export GEMINI_API_KEY="Gemini_Key"
 
 Run the script with the target URL and wordlist.
 
-## Example:
 ```
 python3 ffuGemini.py -u "https://example.com/FUZZ" -w /path/to/wordlist.txt
 ```
