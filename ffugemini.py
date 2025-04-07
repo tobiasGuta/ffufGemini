@@ -142,4 +142,8 @@ def main():
     subprocess.run(ffuf_cmd)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n[!] Detected Ctrl+C. Exiting gracefully...")
+        sys.exit(0)
